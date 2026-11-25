@@ -1,38 +1,53 @@
 # repl-mcp
 
-repl-mcp 是一个通过 MCP 提供交互式伪终端会话的 Go 服务。AI 可以启动 Shell、Python、SSH 或其他命令行 REPL，持续发送输入并读取输出。
+![Go 1.25.5](https://img.shields.io/badge/Go-1.25.5-00ADD8?logo=go&logoColor=white)
+![MIT License](https://img.shields.io/badge/License-MIT-yellow.svg)
 
-## 工具
+English | [&#20013;&#25991;](README.zh-CN.md)
 
-- `create_session`：启动指定可执行文件及参数，分配固定 120 列、40 行的 PTY。
-- `write`：将文本输入写入会话；需要换行时由调用方在 `input` 末尾添加 `\n`。
-- `read`：从字节偏移读取输出，返回下一偏移；输出缓冲最多保留 1 MiB，单次最多读取 64 KiB。
-- `close_session`：终止会话并清理资源。
+repl-mcp is a Go service that provides interactive pseudo-terminal sessions over MCP. An AI can start a shell, Python, SSH, or any other command-line REPL, keep sending input, and read the output.
 
-每个会话独立运行于 repl-mcp 进程，命令和参数直接传给操作系统执行，不经 shell 字符串解析。服务不提供命令白名单或权限隔离，请仅在可信环境中使用。
+## Tools
 
-## 构建与运行
+- `create_session`: starts the specified executable with its arguments and allocates a fixed 120-column by 40-row PTY.
+- `write`: writes text input to a session; to add a newline, the caller appends `\n` to the end of `input`.
+- `read`: reads output from a byte offset and returns the next offset; the output buffer retains at most 1 MiB, and a single read returns at most 64 KiB.
+- `close_session`: terminates the session and releases its resources.
 
-需要 Go 1.25.5 或更新版本。首次构建前安装模块依赖：
+Each session runs independently inside the repl-mcp process. Commands and arguments are passed directly to the operating system for execution, without shell string parsing. The service provides no command allowlist or permission isolation, so use it only in trusted environments.
+
+## Installation
+
+### Prebuilt binaries
+
+Prebuilt binaries are published on [GitHub Releases](https://github.com/yynag/repl-mcp/releases) for Linux and macOS. Windows is not supported yet. Release archives follow the naming convention `repl-mcp_{version}_{os}_{arch}.tar.gz`, for example `repl-mcp_1.0.0_darwin_arm64.tar.gz`.
+
+### Build from source
+
+Go 1.25.5 or newer is required. Install the module dependencies before the first build:
 
 ```bash
 go mod download
 go build -trimpath -ldflags '-s -w' -o build/repl-mcp .
 ```
 
-MCP Host 使用 stdio 启动：
+## Running
+
+Start it from an MCP host over stdio:
 
 ```json
 {
   "mcpServers": {
     "repl-mcp": {
-      "command": "/绝对路径/build/repl-mcp"
+      "command": "/absolute/path/build/repl-mcp"
     }
   }
 }
 ```
 
-测试与静态检查：
+## Testing
+
+Tests and static checks:
 
 ```bash
 go test -race ./...
