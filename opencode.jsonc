@@ -4,7 +4,7 @@
     "servers": {
       "repl": {
         "type": "local",
-        "command": ["/Users/yyang/Workspace/repl-mcp/build/repl-mcp"],
+        "command": ["./build/repl-mcp"],
         "disabled": false
       }
     }
