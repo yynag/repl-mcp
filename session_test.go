@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// TestSessionRoundTrip 验证交互输入、输出读取及会话关闭。
+// TestSessionRoundTrip verifies interactive input, output reading and session close.
 func TestSessionRoundTrip(t *testing.T) {
 	m := testSessionManager(t)
 	s, err := m.Create("/bin/sh", []string{"-c", `read line; printf 'got:%s\n' "$line"`}, "")
@@ -35,10 +35,10 @@ func TestSessionRoundTrip(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	t.Fatal("未在期限内读取到命令输出")
+	t.Fatal("command output was not read before the deadline")
 }
 
-// TestSessionOutputLimit 验证输出缓存有界并正确报告被截断的偏移。
+// TestSessionOutputLimit verifies the output buffer is bounded and truncated offsets are reported correctly.
 func TestSessionOutputLimit(t *testing.T) {
 	s := &Session{id: "test", output: []byte("56789"), base: 5}
 	m := &SessionManager{sessions: map[string]*Session{s.id: s}}
@@ -47,22 +47,22 @@ func TestSessionOutputLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	if result["output"] != "567" || result["next_offset"] != int64(8) || result["truncated"] != true {
-		t.Fatalf("意外读取结果：%v", result)
+		t.Fatalf("unexpected read result: %v", result)
 	}
 }
 
-// TestSessionErrors 验证空命令、无效偏移和不存在的会话会返回错误。
+// TestSessionErrors verifies that an empty command, an invalid offset and a missing session return errors.
 func TestSessionErrors(t *testing.T) {
 	m := testSessionManager(t)
 	if _, err := m.Create("", nil, ""); err == nil {
-		t.Fatal("空命令应报错")
+		t.Fatal("empty command should return an error")
 	}
 	if _, err := m.Read("missing", 0, 1); err == nil {
-		t.Fatal("不存在的会话应报错")
+		t.Fatal("missing session should return an error")
 	}
 	s := createTestSession(t, m, "/bin/cat")
 	if _, err := m.Read(s.id, -1, 1); err == nil {
-		t.Fatal("负偏移应报错")
+		t.Fatal("negative offset should return an error")
 	}
 }
 
@@ -84,12 +84,12 @@ func TestNaturalExitKillsBackgroundJob(t *testing.T) {
 	select {
 	case <-s.done:
 	case <-time.After(3 * time.Second):
-		t.Fatal("带有残留进程的会话未结束")
+		t.Fatal("session with a leftover process did not end")
 	}
 	waitForProcessGone(t, pid)
 	result, err := m.Read(s.id, 0, 4096)
 	if err != nil || result["running"] != false || result["exit_code"] != 7 {
-		t.Fatalf("意外退出状态：%v，%v", result, err)
+		t.Fatalf("unexpected exit status: %v, %v", result, err)
 	}
 
 	m.mu.Lock()
@@ -99,11 +99,11 @@ func TestNaturalExitKillsBackgroundJob(t *testing.T) {
 	expires := s.endedAt.Add(retention)
 	m.reap(expires.Add(-time.Nanosecond))
 	if _, err := m.Read(s.id, 0, 4096); err != nil {
-		t.Fatalf("保留期限内无法读取：%v", err)
+		t.Fatalf("read failed within the retention period: %v", err)
 	}
 	m.reap(expires)
 	if _, err := m.Read(s.id, 0, 4096); err == nil {
-		t.Fatal("保留期限结束后会话未移除")
+		t.Fatal("session was not removed after the retention period ended")
 	}
 }
 
@@ -112,7 +112,7 @@ func TestBlockedWriteDoesNotBlockReadOrClose(t *testing.T) {
 	s := createTestSession(t, m, "/bin/sh", "-c", `stty raw -echo || exit 1; while :; do printf 'tick\n'; sleep 0.02; done`)
 	t.Cleanup(func() { _ = s.cmd.Process.Kill() })
 	var offset int64
-	waitForCondition(t, "未读取到初始输出", func() bool {
+	waitForCondition(t, "initial output was not read", func() bool {
 		result, err := m.Read(s.id, 0, 4096)
 		if err != nil {
 			t.Fatal(err)
@@ -125,7 +125,7 @@ func TestBlockedWriteDoesNotBlockReadOrClose(t *testing.T) {
 		_, err := m.Write(s.id, strings.Repeat("x", 2*maxOutput))
 		writeResult <- err
 	}()
-	waitForCondition(t, "写入未因终端背压而阻塞", func() bool {
+	waitForCondition(t, "write did not block due to terminal backpressure", func() bool {
 		if s.writeMu.TryLock() {
 			s.writeMu.Unlock()
 			return false
@@ -141,7 +141,7 @@ func TestBlockedWriteDoesNotBlockReadOrClose(t *testing.T) {
 				return
 			}
 		}
-		readResult <- errors.New("写入阻塞期间未读取到新输出")
+		readResult <- errors.New("no new output was read while the write was blocked")
 	}()
 	select {
 	case err := <-readResult:
@@ -149,11 +149,11 @@ func TestBlockedWriteDoesNotBlockReadOrClose(t *testing.T) {
 			t.Fatal(err)
 		}
 	case <-time.After(3 * time.Second):
-		t.Fatal("读取被阻塞的写入卡住")
+		t.Fatal("read was stuck behind the blocked write")
 	}
 	select {
 	case err := <-writeResult:
-		t.Fatalf("关闭前写入已返回：%v", err)
+		t.Fatalf("write returned before close: %v", err)
 	default:
 	}
 	closeResult := make(chan error, 1)
@@ -164,15 +164,15 @@ func TestBlockedWriteDoesNotBlockReadOrClose(t *testing.T) {
 			t.Fatal(err)
 		}
 	case <-time.After(3 * time.Second):
-		t.Fatal("关闭被阻塞的写入卡住")
+		t.Fatal("close was stuck behind the blocked write")
 	}
 	select {
 	case err := <-writeResult:
 		if err == nil {
-			t.Fatal("关闭应中断写入")
+			t.Fatal("close should interrupt the write")
 		}
 	case <-time.After(3 * time.Second):
-		t.Fatal("关闭未唤醒写入")
+		t.Fatal("close did not wake the write")
 	}
 }
 
@@ -188,22 +188,23 @@ func TestEmptyReadPollsDoNotPreventIdleReap(t *testing.T) {
 		now := time.Now()
 		result, err := m.Read(s.id, 0, 4096)
 		if err != nil || result["output"] != "" || result["running"] != true {
-			t.Fatalf("预期运行中的会话无输出，得到 %v，%v", result, err)
+			t.Fatalf("expected no output from a running session, got %v, %v", result, err)
 		}
 		if !now.Before(deadline) {
-			// 直接触发巡检，以免等待生产环境的一分钟周期。
+			// Trigger reaping directly instead of waiting for the one-minute
+			// tick used in production.
 			m.reap(now)
 			break
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
 	if _, err := m.get(s.id); err == nil {
-		t.Fatal("连续空读不应阻止空闲会话回收")
+		t.Fatal("repeated empty reads should not prevent idle session reaping")
 	}
 	select {
 	case <-s.done:
 	default:
-		t.Fatal("空闲会话移除后进程仍未结束")
+		t.Fatal("process is still running after the idle session was removed")
 	}
 }
 
@@ -217,7 +218,7 @@ func TestSessionIORefreshesIdleTimeout(t *testing.T) {
 			m.mu.Unlock()
 			s := createTestSession(t, m, "/bin/sh", "-c", `printf ready; exec /bin/cat`)
 			if name == "read" {
-				waitForCondition(t, "未收到测试输出", func() bool {
+				waitForCondition(t, "test output was not received", func() bool {
 					s.mu.Lock()
 					defer s.mu.Unlock()
 					return string(s.output) == "ready"
@@ -231,7 +232,7 @@ func TestSessionIORefreshesIdleTimeout(t *testing.T) {
 			case "read":
 				result, err := m.Read(s.id, 0, 4096)
 				if err != nil || result["output"] != "ready" {
-					t.Fatalf("预期读取到输出，得到 %v，%v", result, err)
+					t.Fatalf("expected output, got %v, %v", result, err)
 				}
 			case "write", "empty_write":
 				input := ""
@@ -239,17 +240,17 @@ func TestSessionIORefreshesIdleTimeout(t *testing.T) {
 					input = "hello\n"
 				}
 				if n, err := m.Write(s.id, input); err != nil || n != len(input) {
-					t.Fatalf("预期写入 %d 字节，得到 %d，%v", len(input), n, err)
+					t.Fatalf("expected to write %d bytes, wrote %d: %v", len(input), n, err)
 				}
 			}
 			m.reap(now.Add(idleTimeout / 2))
 			_, err := m.get(s.id)
 			if name == "empty_write" {
 				if err == nil {
-					t.Fatal("零字节写入不应阻止空闲会话回收")
+					t.Fatal("zero-byte writes should not prevent idle session reaping")
 				}
 			} else if err != nil {
-				t.Fatalf("有实际读写的会话被提前回收：%v", err)
+				t.Fatalf("session with real reads or writes was reaped early: %v", err)
 			}
 		})
 	}
@@ -261,8 +262,8 @@ func TestCreateSessionLimit(t *testing.T) {
 	for i := 1; i < 8; i++ {
 		createTestSession(t, m, "/bin/cat")
 	}
-	if _, err := m.Create("/bin/cat", nil, ""); err == nil || !strings.Contains(err.Error(), "上限") {
-		t.Fatalf("第九个会话应超出上限：%v", err)
+	if _, err := m.Create("/bin/cat", nil, ""); err == nil || !strings.Contains(err.Error(), "session limit reached") {
+		t.Fatalf("ninth session should exceed the limit: %v", err)
 	}
 	if err := m.Close(first.id); err != nil {
 		t.Fatal(err)
@@ -286,20 +287,20 @@ func TestCloseTimeoutRemovesSession(t *testing.T) {
 	m.mu.Lock()
 	m.sessions[s.id] = s
 	m.mu.Unlock()
-	if err := m.Close(s.id); err == nil || !strings.Contains(err.Error(), "退出超时") {
-		t.Fatalf("未收到关闭超时错误：%v", err)
+	if err := m.Close(s.id); err == nil || !strings.Contains(err.Error(), "timed out") {
+		t.Fatalf("did not get a close timeout error: %v", err)
 	}
 	if _, err := terminal.WriteString("test"); !errors.Is(err, os.ErrClosed) {
-		t.Fatalf("关闭超时后终端仍未关闭：%v", err)
+		t.Fatalf("terminal is still open after the close timeout: %v", err)
 	}
 	if _, err := m.get(s.id); err == nil {
-		t.Fatal("关闭超时后会话未移除")
+		t.Fatal("session was not removed after the close timeout")
 	}
 }
 
 func TestProcStatSID(t *testing.T) {
 	if got := procStatSID("123 (name with ) and spaces)) S 7 88 543 0"); got != 543 {
-		t.Fatalf("SID = %d，预期为 543", got)
+		t.Fatalf("SID = %d, want 543", got)
 	}
 }
 
@@ -326,7 +327,7 @@ func startBackgroundJob(t *testing.T, m *SessionManager) (*Session, int) {
 		t.Fatal(err)
 	}
 	var pid int
-	waitForCondition(t, "未读取到后台进程 PID", func() bool {
+	waitForCondition(t, "background process PID was not read", func() bool {
 		result, err := m.Read(s.id, 0, 4096)
 		if err != nil {
 			t.Fatal(err)
@@ -346,7 +347,7 @@ func startBackgroundJob(t *testing.T, m *SessionManager) (*Session, int) {
 		}
 	})
 	if pgid, err := syscall.Getpgid(pid); err != nil || pgid != pid || pgid == s.cmd.Process.Pid {
-		t.Fatalf("后台进程 %d 未进入独立进程组：pgid=%d，%v", pid, pgid, err)
+		t.Fatalf("background process %d did not enter its own process group: pgid=%d, %v", pid, pgid, err)
 	}
 	return s, pid
 }
@@ -359,10 +360,10 @@ func waitForProcessGone(t *testing.T, pid int) {
 			return
 		}
 		if err != nil {
-			t.Fatalf("无法检查进程 %d：%v", pid, err)
+			t.Fatalf("cannot inspect process %d: %v", pid, err)
 		}
 	}
-	t.Fatalf("进程 %d 仍存在，预期 syscall.Kill(pid, 0) 返回 ESRCH", pid)
+	t.Fatalf("process %d still exists, want syscall.Kill(pid, 0) to return ESRCH", pid)
 }
 
 func waitForCondition(t *testing.T, failure string, condition func() bool) {

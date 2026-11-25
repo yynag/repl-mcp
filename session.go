@@ -1,4 +1,4 @@
-// Package main 提供交互式伪终端会话管理。
+// Package main provides interactive pseudo-terminal session management.
 package main
 
 import (
@@ -28,7 +28,7 @@ const (
 	closeTimeout = 3 * time.Second
 )
 
-// Session 保存一个交互式命令及其最近输出。
+// Session holds an interactive command and its recent output.
 type Session struct {
 	mu       sync.Mutex
 	writeMu  sync.Mutex
@@ -43,14 +43,14 @@ type Session struct {
 	done     chan struct{}
 	killDone chan struct{}
 
-	// 由 Session.mu 保护。
+	// Protected by Session.mu.
 	lastActive time.Time
 
-	// 由 SessionManager.mu 保护。
+	// Protected by SessionManager.mu.
 	closing bool
 }
 
-// SessionManager 管理当前进程中的伪终端会话。
+// SessionManager manages pseudo-terminal sessions within the current process.
 type SessionManager struct {
 	startMu     sync.Mutex
 	mu          sync.Mutex
@@ -61,7 +61,7 @@ type SessionManager struct {
 	stop        chan struct{}
 }
 
-// NewSessionManager 创建会话管理器。
+// NewSessionManager creates a session manager.
 func NewSessionManager() *SessionManager {
 	m := &SessionManager{
 		sessions:    make(map[string]*Session),
@@ -74,29 +74,29 @@ func NewSessionManager() *SessionManager {
 	return m
 }
 
-// Create 启动指定程序并分配固定尺寸伪终端。
+// Create starts the given program in a fixed-size pseudo-terminal.
 func (m *SessionManager) Create(command string, args []string, cwd string) (*Session, error) {
 	if strings.TrimSpace(command) == "" {
-		return nil, errors.New("command 不能为空")
+		return nil, errors.New("command must not be empty")
 	}
 	m.startMu.Lock()
 	defer m.startMu.Unlock()
 	select {
 	case <-m.stop:
-		return nil, errors.New("会话管理器已关闭")
+		return nil, errors.New("session manager is closed")
 	default:
 	}
 	m.mu.Lock()
 	count, limit := len(m.sessions), m.maxSessions
 	m.mu.Unlock()
 	if count >= limit {
-		return nil, fmt.Errorf("会话数已达上限（%d）", limit)
+		return nil, fmt.Errorf("session limit reached (%d)", limit)
 	}
 	cmd := exec.Command(command, args...)
 	cmd.Dir = cwd
 	terminal, err := startTerminal(cmd)
 	if err != nil {
-		return nil, fmt.Errorf("启动伪终端命令失败：%w", err)
+		return nil, fmt.Errorf("failed to start command in pseudo-terminal: %w", err)
 	}
 	s := &Session{
 		id:         newSessionID(),
@@ -126,7 +126,8 @@ func startTerminal(cmd *exec.Cmd) (*os.File, error) {
 	if err := pty.Setsize(master, &pty.Winsize{Cols: terminalCols, Rows: terminalRows}); err != nil {
 		return nil, err
 	}
-	// NewFile 必须接收已设为非阻塞的描述符，Close 才能中断等待中的 I/O。
+	// NewFile must receive a descriptor already set to non-blocking mode so that
+	// Close can interrupt pending I/O.
 	syscall.ForkLock.RLock()
 	fd, err := syscall.Dup(int(master.Fd()))
 	if err == nil {
@@ -154,7 +155,7 @@ func startTerminal(cmd *exec.Cmd) (*os.File, error) {
 	return terminal, nil
 }
 
-// Write 将输入原样写入伪终端。
+// Write writes the input to the pseudo-terminal as-is.
 func (m *SessionManager) Write(id, input string) (int, error) {
 	s, err := m.get(id)
 	if err != nil {
@@ -164,7 +165,7 @@ func (m *SessionManager) Write(id, input string) (int, error) {
 	defer s.writeMu.Unlock()
 	select {
 	case <-s.done:
-		return 0, errors.New("会话已结束")
+		return 0, errors.New("session has ended")
 	default:
 	}
 	n, err := io.WriteString(s.terminal, input)
@@ -174,19 +175,20 @@ func (m *SessionManager) Write(id, input string) (int, error) {
 		s.mu.Unlock()
 	}
 	if err != nil {
-		return n, fmt.Errorf("写入会话失败：%w", err)
+		return n, fmt.Errorf("failed to write to session: %w", err)
 	}
 	return n, nil
 }
 
-// Read 从绝对输出偏移读取数据，偏移落在已丢弃区间时从保留区起点读取。
+// Read reads output from an absolute offset; when the offset falls in the
+// discarded range, reading starts at the beginning of the retained buffer.
 func (m *SessionManager) Read(id string, offset int64, limit int) (map[string]any, error) {
 	s, err := m.get(id)
 	if err != nil {
 		return nil, err
 	}
 	if offset < 0 {
-		return nil, errors.New("offset 不能小于 0")
+		return nil, errors.New("offset must not be negative")
 	}
 	if limit <= 0 || limit > defaultRead {
 		limit = defaultRead
@@ -218,7 +220,7 @@ func (m *SessionManager) Read(id string, offset int64, limit int) (map[string]an
 	}, nil
 }
 
-// Close 终止并移除会话。
+// Close terminates and removes the session.
 func (m *SessionManager) Close(id string) error {
 	m.mu.Lock()
 	s := m.sessions[id]
@@ -227,7 +229,7 @@ func (m *SessionManager) Close(id string) error {
 	}
 	m.mu.Unlock()
 	if s == nil {
-		return fmt.Errorf("未找到会话 %q", id)
+		return fmt.Errorf("session %q not found", id)
 	}
 	return m.closeSession(s)
 }
@@ -253,11 +255,11 @@ func (m *SessionManager) closeSession(s *Session) error {
 	case <-s.done:
 		return nil
 	case <-timer.C:
-		return errors.New("等待会话进程退出超时")
+		return errors.New("timed out waiting for session process to exit")
 	}
 }
 
-// CloseAll 关闭并清理所有会话。
+// CloseAll closes and cleans up all sessions.
 func (m *SessionManager) CloseAll() {
 	m.startMu.Lock()
 	m.mu.Lock()
@@ -321,7 +323,7 @@ func (m *SessionManager) get(id string) (*Session, error) {
 	defer m.mu.Unlock()
 	s := m.sessions[id]
 	if s == nil {
-		return nil, fmt.Errorf("未找到会话 %q", id)
+		return nil, fmt.Errorf("session %q not found", id)
 	}
 	return s, nil
 }
@@ -350,7 +352,8 @@ func (s *Session) readOutput(done chan<- struct{}) {
 func (s *Session) wait(outputDone <-chan struct{}) {
 	err := s.cmd.Wait()
 	<-s.kill()
-	// 尝试读完退出前的输出，但不等仍持有从端的进程。
+	// Drain the output produced before exit, but do not wait for processes that
+	// still hold the slave side open.
 	_ = s.terminal.SetReadDeadline(time.Now().Add(250 * time.Millisecond))
 	<-outputDone
 	_ = s.terminal.Close()
@@ -406,7 +409,8 @@ func killSessionMembers(sid int) {
 		if err != nil {
 			return
 		}
-		// Linux 的 syscall 包不导出 Getsid，因此在共享源文件中使用 Darwin 的调用号。
+		// The syscall package on Linux does not export Getsid, so use the Darwin
+		// syscall number in this shared source file.
 		const darwinSysGetsid = 310
 		for _, field := range strings.Fields(string(output)) {
 			pid, err := strconv.Atoi(field)
@@ -422,7 +426,8 @@ func killSessionMembers(sid int) {
 }
 
 func procStatSID(stat string) int {
-	// comm 可包含右括号；其后依次是 state、ppid、pgrp、session。
+	// comm may contain right parentheses; the fields that follow are state,
+	// ppid, pgrp and session.
 	end := strings.LastIndexByte(stat, ')')
 	if end < 0 {
 		return 0

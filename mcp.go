@@ -9,6 +9,9 @@ import (
 	mcpserver "github.com/mark3labs/mcp-go/server"
 )
 
+// version is the server version reported to MCP clients.
+var version = "1.0.0"
+
 type toolDefinition struct {
 	name        string
 	description string
@@ -25,7 +28,7 @@ type toolArguments struct {
 	MaxBytes  int      `json:"max_bytes"`
 }
 
-// 工具说明使用英文并保持精简。
+// Tool descriptions are written in English and kept concise.
 var toolDefinitions = []toolDefinition{
 	{"create_session", "Start a command in a persistent 120x40 PTY session.", `{"type":"object","properties":{"command":{"type":"string","minLength":1},"args":{"type":"array","items":{"type":"string"}},"cwd":{"type":"string"}},"required":["command"],"additionalProperties":false}`},
 	{"write", "Write input to a PTY session.", `{"type":"object","properties":{"session_id":{"type":"string","minLength":1},"input":{"type":"string"}},"required":["session_id","input"],"additionalProperties":false}`},
@@ -33,9 +36,9 @@ var toolDefinitions = []toolDefinition{
 	{"close_session", "Terminate and close a PTY session.", `{"type":"object","properties":{"session_id":{"type":"string","minLength":1}},"required":["session_id"],"additionalProperties":false}`},
 }
 
-// NewMCPServer 注册 REPL 会话工具。
+// NewMCPServer registers the REPL session tools.
 func NewMCPServer(sessions *SessionManager) *mcpserver.MCPServer {
-	server := mcpserver.NewMCPServer("repl-mcp", "0.1.0", mcpserver.WithRecovery(), mcpserver.WithInputSchemaValidation())
+	server := mcpserver.NewMCPServer("repl-mcp", version, mcpserver.WithRecovery(), mcpserver.WithInputSchemaValidation())
 	for _, definition := range toolDefinitions {
 		tool := mcp.NewToolWithRawSchema(definition.name, definition.description, json.RawMessage(definition.schema))
 		name := definition.name
@@ -46,7 +49,7 @@ func NewMCPServer(sessions *SessionManager) *mcpserver.MCPServer {
 			}
 			encoded, err := json.MarshalIndent(result, "", "  ")
 			if err != nil {
-				return mcp.NewToolResultError(fmt.Sprintf("编码工具结果失败：%v", err)), nil
+				return mcp.NewToolResultError(fmt.Sprintf("failed to encode tool result: %v", err)), nil
 			}
 			return mcp.NewToolResultText(string(encoded)), nil
 		})
@@ -61,7 +64,7 @@ func runTool(sessions *SessionManager, name string, input map[string]any) (any, 
 		return nil, err
 	}
 	if err = json.Unmarshal(encoded, &args); err != nil {
-		return nil, fmt.Errorf("参数格式无效：%w", err)
+		return nil, fmt.Errorf("invalid arguments: %w", err)
 	}
 	switch name {
 	case "create_session":
@@ -81,6 +84,6 @@ func runTool(sessions *SessionManager, name string, input map[string]any) (any, 
 		}
 		return map[string]any{"session_id": args.SessionID, "closed": true}, nil
 	default:
-		return nil, fmt.Errorf("未知工具：%s", name)
+		return nil, fmt.Errorf("unknown tool: %s", name)
 	}
 }
