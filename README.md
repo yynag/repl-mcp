@@ -17,7 +17,7 @@ repl-mcp 是一个通过 MCP 提供交互式伪终端会话的 Go 服务。AI �
 
 ```bash
 go mod download
-go build -trimpath -o build/repl-mcp .
+go build -trimpath -ldflags '-s -w' -o build/repl-mcp .
 ```
 
 MCP Host 使用 stdio 启动：
